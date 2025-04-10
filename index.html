@@ -2,123 +2,104 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Document</title>
+    <title>Voice Command App - Start & Stop</title>
     <style>
-        #webcam-container {
-            width: 200px;
-            height: 200px;
-            background-color: #000;
-            margin: 10px 0;
+        body {
+            font-family: sans-serif;
+            text-align: center;
+            padding-top: 50px;
+            background-color: #f0f0f0;
+            transition: background-color 0.4s ease;
         }
-        #webcam-container canvas {
-            display: none;
+
+        h1 {
+            font-size: 2em;
         }
-        #webcam-container.active canvas {
-            display: block;
+
+        #status {
+            margin-top: 20px;
+            font-size: 1.5em;
+            color: #333;
         }
-        .button {
+
+        button {
             padding: 10px 20px;
-            font-size: 16px;
-            cursor: pointer;
-            background-color: #4CAF50;
-            color: white;
-            border: none;
-            border-radius: 4px;
-        }
-        .button.stop {
-            background-color: #f44336;
+            font-size: 1em;
+            margin-top: 20px;
         }
     </style>
 </head>
 <body>
-    <div>Teachable Machine Image Model</div>
-    <button id="toggleButton" class="button" onclick="toggleCamera()">Start</button>
-    <div id="webcam-container"></div>
-    <div id="label-container"></div>
-    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest/dist/tf.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@teachablemachine/image@latest/dist/teachablemachine-image.min.js"></script>
-    <script type="text/javascript">
-        // More API functions here:
-        // https://github.com/googlecreativelab/teachablemachine-community/tree/master/libraries/image
+<h1>🎙️ Voice Command App</h1>
+<button type="button" onclick="init()">Start Listening</button>
+<div id="status">Click start to begin</div>
 
-        // TODO: the link to your model provided by Teachable Machine export panel
-        const URL = "https://teachablemachine.withgoogle.com/models/YOUR_MODEL_URL/";
+<!-- Optional Audio Feedback -->
+<audio id="start-sound" src="start.mp3"></audio>
+<audio id="stop-sound" src="stop.mp3"></audio>
 
-        let model, webcam, labelContainer, maxPredictions;
-        let isRunning = false;
-        let animationFrameId = null;
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@1.3.1/dist/tf.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/speech-commands@0.4.0/dist/speech-commands.min.js"></script>
 
-        // Load the image model and setup the webcam
-        async function init() {
-            const modelURL = URL + "model.json";
-            const metadataURL = URL + "metadata.json";
+<script>
+    const URL = "https://teachablemachine.withgoogle.com/models/bE6Hk7xU9/";
+    let recognizer;
 
-            model = await tmImage.load(modelURL, metadataURL);
-            maxPredictions = model.getTotalClasses();
+    async function createModel() {
+        const checkpointURL = URL + "model.json";
+        const metadataURL = URL + "metadata.json";
 
-            const flip = true;
-            webcam = new tmImage.Webcam(200, 200, flip);
-            await webcam.setup();
-            await webcam.play();
-            
-            // Clear any existing canvas before adding the new one
-            const container = document.getElementById("webcam-container");
-            container.innerHTML = '';
-            container.appendChild(webcam.canvas);
-            container.classList.add("active");
-            
-            labelContainer = document.getElementById("label-container");
-            for (let i = 0; i < maxPredictions; i++) {
-                labelContainer.appendChild(document.createElement("div"));
+        recognizer = speechCommands.create(
+            "BROWSER_FFT",
+            undefined,
+            checkpointURL,
+            metadataURL
+        );
+
+        await recognizer.ensureModelLoaded();
+        return recognizer;
+    }
+
+    async function init() {
+        const recognizer = await createModel();
+        const classLabels = recognizer.wordLabels();
+        const status = document.getElementById("status");
+
+        recognizer.listen(result => {
+            const scores = result.scores;
+            const maxScore = Math.max(...scores);
+            const index = scores.indexOf(maxScore);
+            const prediction = classLabels[index];
+
+            if (maxScore > 0.85) {
+                handleCommand(prediction);
             }
-            
-            isRunning = true;
-            animationFrameId = window.requestAnimationFrame(loop);
-        }
+        }, {
+            includeSpectrogram: false,
+            probabilityThreshold: 0.75,
+            invokeCallbackOnNoiseAndUnknown: true,
+            overlapFactor: 0.5
+        });
+    }
 
-        async function loop() {
-            if (!isRunning) return;
-            webcam.update(); // update the webcam frame
-            await predict();
-            animationFrameId = window.requestAnimationFrame(loop);
-        }
+    function handleCommand(command) {
+        const status = document.getElementById("status");
 
-        // run the webcam image through the image model
-        async function predict() {
-            // predict can take in an image, video or canvas html element
-            const prediction = await model.predict(webcam.canvas);
-            for (let i = 0; i < maxPredictions; i++) {
-                const classPrediction =
-                    prediction[i].className + ": " + prediction[i].probability.toFixed(2);
-                labelContainer.childNodes[i].innerHTML = classPrediction;
-            }
+        if (command === "start") {
+            document.body.style.backgroundColor = "#c6f6c6";
+            status.textContent = "✅ Start Command Recognized!";
+            document.getElementById("start-sound").play();
+        } else if (command === "stop") {
+            document.body.style.backgroundColor = "#f6c6c6";
+            status.textContent = "🛑 Stop Command Recognized!";
+            document.getElementById("stop-sound").play();
+        } else {
+            document.body.style.backgroundColor = "#f0f0f0";
+            status.textContent = "🎧 Listening...";
         }
-
-        function stopCamera() {
-            isRunning = false;
-            if (animationFrameId) {
-                cancelAnimationFrame(animationFrameId);
-            }
-            if (webcam) {
-                webcam.stop();
-            }
-            document.getElementById("webcam-container").classList.remove("active");
-            document.getElementById("toggleButton").textContent = "Start";
-            document.getElementById("toggleButton").classList.remove("stop");
-        }
-
-        async function toggleCamera() {
-            const button = document.getElementById("toggleButton");
-            if (!isRunning) {
-                await init();
-                button.textContent = "Stop";
-                button.classList.add("stop");
-            } else {
-                stopCamera();
-            }
-        }
-    </script>
-
+    }
+</script>
 </body>
 </html>
+
+
